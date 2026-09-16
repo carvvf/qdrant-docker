@@ -1,0 +1,112 @@
+name: Build custom image
+run-name: Build and scan custom Qdrant image
+
+on:
+  workflow_dispatch:
+    inputs:
+      image_tag_suffix:
+        description: Optional suffix for local build and scan tags
+        required: false
+        default: ''
+      qdrant_base_ref:
+        description: Immutable Qdrant base reference, or qdrant/qdrant:latest for an ad-hoc build
+        required: false
+        default: qdrant/qdrant:latest
+      qdrant_upstream_version:
+        description: Qdrant version recorded in image labels
+        required: false
+        default: unknown
+      qdrant_upstream_digest:
+        description: Qdrant manifest digest recorded in image labels
+        required: false
+        default: unknown
+  workflow_call:
+    inputs:
+      image_tag_suffix:
+        required: true
+        type: string
+      qdrant_base_ref:
+        required: true
+        type: string
+      qdrant_upstream_version:
+        required: true
+        type: string
+      qdrant_upstream_digest:
+        required: true
+        type: string
+
+env:
+  FORCE_JAVASCRIPT_ACTIONS_TO_NODE24: 'true'
+
+jobs:
+  build-and-scan:
+    runs-on: ubuntu-latest
+    permissions:
+      contents: read
+    strategy:
+      fail-fast: false
+      matrix:
+        platform:
+          - linux/amd64
+          - linux/arm64
+
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v6.0.2
+
+      - name: Set up QEMU
+        uses: docker/setup-qemu-action@v4.0.0
+
+      - name: Set up Docker Buildx
+        uses: docker/setup-buildx-action@v4.0.0
+
+      - name: Compute local image tag
+        run: |
+          set -euo pipefail
+          tag_suffix='${{ inputs.image_tag_suffix }}'
+          if [ -z "${tag_suffix}" ]; then
+            tag_suffix="${GITHUB_SHA}"
+          fi
+          platform_tag='${{ matrix.platform }}'
+          platform_tag="${platform_tag//\//-}"
+          echo "PLATFORM_TAG=${platform_tag}" >> "${GITHUB_ENV}"
+          echo "IMAGE_REF=local/qdrant-custom:${platform_tag}-${tag_suffix}" >> "${GITHUB_ENV}"
+
+      - name: Build image without pushing
+        uses: docker/build-push-action@v7.0.0
+        with:
+          context: .
+          platforms: ${{ matrix.platform }}
+          load: true
+          pull: true
+          no-cache: true
+          push: false
+          tags: ${{ env.IMAGE_REF }}
+          build-args: |
+            QDRANT_BASE_IMAGE=${{ inputs.qdrant_base_ref }}
+            QDRANT_UPSTREAM_VERSION=${{ inputs.qdrant_upstream_version }}
+            QDRANT_UPSTREAM_DIGEST=${{ inputs.qdrant_upstream_digest }}
+            SOURCE_REPOSITORY=https://github.com/${{ github.repository }}
+
+      - name: Scan image with Trivy
+        uses: aquasecurity/trivy-action@0.35.0
+        with:
+          image-ref: ${{ env.IMAGE_REF }}
+          version: v0.74.0
+          cache: false
+          format: table
+          exit-code: '1'
+          severity: HIGH,CRITICAL
+          vuln-type: os,library
+
+      - name: Run Qdrant integration test on amd64
+        if: matrix.platform == 'linux/amd64'
+        env:
+          IMAGE_REF: ${{ env.IMAGE_REF }}
+        run: bash tests/test-qdrant-image.sh
+
+      - name: Show container logs on test failure
+        if: failure() && matrix.platform == 'linux/amd64'
+        run: |
+          docker ps -a --filter 'name=qdrant-image-test-' --format '{{.Names}}' \
+            | xargs -r -n1 docker logs --tail 200 || true

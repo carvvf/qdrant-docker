@@ -1,0 +1,140 @@
+{
+  "version": "2.0.0",
+  "tasks": [
+    {
+      "label": "Docker: build local image",
+      "type": "shell",
+      "command": "docker",
+      "args": [
+        "build",
+        "--pull",
+        "--no-cache",
+        "-t",
+        "qdrant-custom:local",
+        "."
+      ],
+      "options": {
+        "cwd": "${workspaceFolder}"
+      },
+      "group": {
+        "kind": "build",
+        "isDefault": true
+      },
+      "problemMatcher": []
+    },
+    {
+      "label": "Lint: Dockerfile",
+      "type": "shell",
+      "command": "docker run --rm -i hadolint/hadolint:v2.12.0-alpine hadolint --failure-threshold warning - < Dockerfile",
+      "options": {
+        "cwd": "${workspaceFolder}",
+        "shell": {
+          "executable": "/bin/bash",
+          "args": [
+            "-lc"
+          ]
+        }
+      },
+      "problemMatcher": []
+    },
+    {
+      "label": "Lint: shell scripts",
+      "type": "shell",
+      "command": "docker run --rm --entrypoint shellcheck -v \"${workspaceFolder}:/workspace:ro\" -w /workspace koalaman/shellcheck-alpine:v0.10.0 --shell=bash tests/test-qdrant-image.sh scripts/trivy/scan-image.sh tools/dev_trivy_scan.sh",
+      "options": {
+        "cwd": "${workspaceFolder}",
+        "shell": {
+          "executable": "/bin/bash",
+          "args": [
+            "-lc"
+          ]
+        }
+      },
+      "problemMatcher": []
+    },
+    {
+      "label": "Lint: GitHub Actions",
+      "type": "shell",
+      "command": "docker run --rm --entrypoint actionlint -v \"${workspaceFolder}:/repo:ro\" -w /repo rhysd/actionlint:1.7.7 -color .github/workflows/*.yml",
+      "options": {
+        "cwd": "${workspaceFolder}",
+        "shell": {
+          "executable": "/bin/bash",
+          "args": [
+            "-lc"
+          ]
+        }
+      },
+      "problemMatcher": []
+    },
+    {
+      "label": "Test: Qdrant runtime",
+      "type": "shell",
+      "dependsOn": "Docker: build local image",
+      "command": "bash",
+      "args": [
+        "tests/test-qdrant-image.sh"
+      ],
+      "options": {
+        "cwd": "${workspaceFolder}",
+        "env": {
+          "IMAGE_REF": "qdrant-custom:local"
+        }
+      },
+      "group": "test",
+      "presentation": {
+        "reveal": "always",
+        "panel": "dedicated",
+        "clear": false
+      },
+      "problemMatcher": []
+    },
+    {
+      "label": "Trivy: scan CVE",
+      "type": "shell",
+      "dependsOn": "Docker: build local image",
+      "command": "bash",
+      "args": [
+        "tools/dev_trivy_scan.sh"
+      ],
+      "options": {
+        "cwd": "${workspaceFolder}",
+        "env": {
+          "IMAGE_REF": "qdrant-custom:local"
+        }
+      },
+      "presentation": {
+        "reveal": "always",
+        "panel": "dedicated",
+        "clear": false
+      },
+      "problemMatcher": []
+    },
+    {
+      "label": "Test: all",
+      "type": "shell",
+      "dependsOn": [
+        "Lint: Dockerfile",
+        "Lint: shell scripts",
+        "Lint: GitHub Actions",
+        "Test: Qdrant runtime",
+        "Trivy: scan CVE"
+      ],
+      "dependsOrder": "sequence",
+      "command": "true",
+      "options": {
+        "cwd": "${workspaceFolder}"
+      },
+      "group": {
+        "kind": "test",
+        "isDefault": true
+      },
+      "presentation": {
+        "reveal": "always",
+        "panel": "dedicated",
+        "clear": false
+      },
+      "problemMatcher": []
+    }
+  ]
+}

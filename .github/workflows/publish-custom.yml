@@ -1,0 +1,234 @@
+name: Publish custom image
+run-name: Publish custom Qdrant image
+
+on:
+  workflow_dispatch:
+    inputs:
+      qdrant_base_ref:
+        description: Optional immutable base reference; empty resolves qdrant/qdrant:latest
+        required: false
+        default: ''
+      qdrant_upstream_version:
+        description: Optional upstream Qdrant version matching qdrant_base_ref
+        required: false
+        default: ''
+      qdrant_upstream_digest:
+        description: Optional upstream manifest digest matching qdrant_base_ref
+        required: false
+        default: ''
+  workflow_call:
+    inputs:
+      qdrant_base_ref:
+        required: false
+        type: string
+        default: ''
+      qdrant_upstream_version:
+        required: false
+        type: string
+        default: ''
+      qdrant_upstream_digest:
+        required: false
+        type: string
+        default: ''
+
+env:
+  FORCE_JAVASCRIPT_ACTIONS_TO_NODE24: 'true'
+
+concurrency:
+  group: qdrant-image-publish-${{ github.repository }}
+  cancel-in-progress: false
+
+jobs:
+  preflight:
+    runs-on: ubuntu-latest
+    permissions:
+      contents: read
+      packages: read
+    outputs:
+      image_ref: ${{ steps.version.outputs.image_ref }}
+      version: ${{ steps.version.outputs.version }}
+      base_ref: ${{ steps.version.outputs.base_ref }}
+      base_version: ${{ steps.version.outputs.base_version }}
+      base_digest: ${{ steps.version.outputs.base_digest }}
+
+    steps:
+      - name: Resolve upstream image and custom version
+        id: version
+        env:
+          GH_TOKEN: ${{ github.token }}
+          INPUT_BASE_REF: ${{ inputs.qdrant_base_ref }}
+          INPUT_BASE_VERSION: ${{ inputs.qdrant_upstream_version }}
+          INPUT_BASE_DIGEST: ${{ inputs.qdrant_upstream_digest }}
+        run: |
+          set -euo pipefail
+
+          base_ref="${INPUT_BASE_REF}"
+          base_version="${INPUT_BASE_VERSION}"
+          base_digest="${INPUT_BASE_DIGEST}"
+
+          if [ -z "${base_ref}" ]; then
+            docker pull qdrant/qdrant:latest
+            base_digest="$(docker image inspect qdrant/qdrant:latest --format '{{index .RepoDigests 0}}')"
+            base_digest="${base_digest##*@}"
+            base_version="$(docker image inspect qdrant/qdrant:latest --format '{{index .Config.Labels "org.opencontainers.image.version"}}')"
+            base_ref="qdrant/qdrant@${base_digest}"
+          fi
+
+          if [ -z "${base_version}" ] || [ -z "${base_digest}" ] || [ "${base_digest}" = "unknown" ]; then
+            echo "An immutable Qdrant base reference, version, and digest are required." >&2
+            exit 1
+          fi
+          if [[ ! "${base_digest}" =~ ^sha256:[a-f0-9]{64}$ ]]; then
+            echo "Invalid Qdrant base digest: ${base_digest}" >&2
+            exit 1
+          fi
+
+          base_version="${base_version#v}"
+          if [[ ! "${base_version}" =~ ^[0-9]+\.[0-9]+\.[0-9]+([.-][0-9A-Za-z._-]+)?$ ]]; then
+            echo "Unsupported Qdrant version format: ${base_version}" >&2
+            exit 1
+          fi
+
+          owner="${GITHUB_REPOSITORY_OWNER}"
+          owner_lc="$(printf '%s' "${owner}" | tr '[:upper:]' '[:lower:]')"
+          package_name="$(printf '%s' "${GITHUB_REPOSITORY#*/}" | tr '[:upper:]' '[:lower:]')"
+          image_ref="ghcr.io/${owner_lc}/${package_name}"
+          escaped_base_version="${base_version//./\\.}"
+
+          owner_type="$(gh api -H 'Accept: application/vnd.github+json' "/users/${owner}" --jq '.type')"
+          if [ "${owner_type}" = 'Organization' ]; then
+            package_scope="/orgs/${owner}"
+          else
+            package_scope="/users/${owner}"
+          fi
+
+          latest_n=''
+          set +e
+          versions_json="$(gh api -H 'Accept: application/vnd.github+json' "${package_scope}/packages/container/${package_name}/versions?per_page=100" 2>/tmp/qdrant-ghcr-versions.err)"
+          versions_status=$?
+          set -e
+
+          if [ "${versions_status}" -eq 0 ]; then
+            latest_n="$(
+              jq -r '
+                .[]
+                | .metadata.container.tags // []
+                | select(index("latest"))
+                | .[]
+              ' <<<"${versions_json}" \
+                | sed -nE "s/^${escaped_base_version}-custom\\.([0-9]+)$/\\1/p" \
+                | sort -n \
+                | tail -n1
+            )"
+          elif grep -q '404' /tmp/qdrant-ghcr-versions.err; then
+            echo 'GHCR package does not exist yet; this is the bootstrap publication.'
+          else
+            cat /tmp/qdrant-ghcr-versions.err >&2
+            exit "${versions_status}"
+          fi
+
+          if [ -z "${latest_n}" ]; then
+            next_n=1
+            previous_version='none'
+          else
+            next_n=$((latest_n + 1))
+            previous_version="${base_version}-custom.${latest_n}"
+          fi
+          version="${base_version}-custom.${next_n}"
+
+          {
+            echo "image_ref=${image_ref}"
+            echo "version=${version}"
+            echo "base_ref=${base_ref}"
+            echo "base_version=${base_version}"
+            echo "base_digest=${base_digest}"
+          } >> "${GITHUB_OUTPUT}"
+
+          {
+            echo '## Custom image preflight'
+            echo "- Upstream base: ${base_ref}"
+            echo "- Upstream version: ${base_version}"
+            echo "- Previous custom version: ${previous_version}"
+            echo "- New custom version: ${version}"
+            echo "- Target: ${image_ref}:${version}"
+          } >> "${GITHUB_STEP_SUMMARY}"
+
+  build:
+    needs: preflight
+    uses: ./.github/workflows/build-custom.yml
+    with:
+      image_tag_suffix: ${{ needs.preflight.outputs.version }}
+      qdrant_base_ref: ${{ needs.preflight.outputs.base_ref }}
+      qdrant_upstream_version: ${{ needs.preflight.outputs.base_version }}
+      qdrant_upstream_digest: ${{ needs.preflight.outputs.base_digest }}
+    permissions:
+      contents: read
+
+  publish:
+    needs:
+      - preflight
+      - build
+    runs-on: ubuntu-latest
+    permissions:
+      contents: read
+      packages: write
+      id-token: write
+
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v6.0.2
+
+      - name: Set up QEMU
+        uses: docker/setup-qemu-action@v4.0.0
+
+      - name: Set up Docker Buildx
+        uses: docker/setup-buildx-action@v4.0.0
+
+      - name: Log in to GHCR
+        uses: docker/login-action@v4.0.0
+        with:
+          registry: ghcr.io
+          username: ${{ github.actor }}
+          password: ${{ github.token }}
+
+      - name: Build and publish image
+        uses: docker/build-push-action@v7.0.0
+        with:
+          context: .
+          platforms: linux/amd64,linux/arm64
+          push: true
+          pull: true
+          no-cache: true
+          provenance: mode=max
+          sbom: true
+          tags: |
+            ${{ needs.preflight.outputs.image_ref }}:${{ needs.preflight.outputs.version }}
+            ${{ needs.preflight.outputs.image_ref }}:latest
+          labels: |
+            org.opencontainers.image.source=https://github.com/${{ github.repository }}
+            org.opencontainers.image.version=${{ needs.preflight.outputs.version }}
+            org.opencontainers.image.base.name=qdrant/qdrant:latest
+            io.github.carvvf.qdrant-docker.base.digest=${{ needs.preflight.outputs.base_digest }}
+            io.github.carvvf.qdrant-docker.base.version=${{ needs.preflight.outputs.base_version }}
+          build-args: |
+            QDRANT_BASE_IMAGE=${{ needs.preflight.outputs.base_ref }}
+            QDRANT_UPSTREAM_VERSION=${{ needs.preflight.outputs.base_version }}
+            QDRANT_UPSTREAM_DIGEST=${{ needs.preflight.outputs.base_digest }}
+            SOURCE_REPOSITORY=https://github.com/${{ github.repository }}
+
+      - name: Inspect published manifests
+        run: |
+          set -euo pipefail
+          docker buildx imagetools inspect \
+            '${{ needs.preflight.outputs.image_ref }}:${{ needs.preflight.outputs.version }}'
+          docker buildx imagetools inspect \
+            '${{ needs.preflight.outputs.image_ref }}:latest'
+
+      - name: Publish summary
+        run: |
+          {
+            echo '## Publish result'
+            echo '- Published image: ${{ needs.preflight.outputs.image_ref }}:${{ needs.preflight.outputs.version }}'
+            echo '- Mutable tag: ${{ needs.preflight.outputs.image_ref }}:latest'
+            echo '- Base digest: ${{ needs.preflight.outputs.base_digest }}'
+          } >> "${GITHUB_STEP_SUMMARY}"
