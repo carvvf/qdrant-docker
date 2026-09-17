@@ -295,18 +295,19 @@ jobs:
             UBUNTU_BASE_IMAGE=${{ needs.preflight.outputs.ubuntu_base_ref }}
             UBUNTU_BASE_DIGEST=${{ needs.preflight.outputs.ubuntu_base_digest }}
             SOURCE_REPOSITORY=https://github.com/${{ github.repository }}
+            CACHEBUST=${{ github.run_id }}
 
       - name: Verify the published linux/amd64 manifest
         run: |
           set -euo pipefail
           image='${{ needs.preflight.outputs.image_ref }}:${{ needs.preflight.outputs.version }}'
           docker buildx imagetools inspect "${image}"
+          # Excludes non-platform entries such as the provenance/SBOM
+          # attestation manifest that buildx attaches to the index.
           docker buildx imagetools inspect --raw "${image}" \
             | jq -e '
-                .manifests
+                [.manifests[] | select(.platform.os == "linux" and .platform.architecture == "amd64")]
                 | length == 1
-                  and .[0].platform.os == "linux"
-                  and .[0].platform.architecture == "amd64"
               ' >/dev/null
 
       - name: Publish summary

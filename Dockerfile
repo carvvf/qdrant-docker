@@ -106,6 +106,13 @@ LABEL io.github.carvvf.qdrant-docker.qdrant.upstream.digest="${QDRANT_UPSTREAM_D
 LABEL io.github.carvvf.qdrant-docker.runtime.base.image="${UBUNTU_BASE_IMAGE}"
 LABEL io.github.carvvf.qdrant-docker.runtime.base.digest="${UBUNTU_BASE_DIGEST}"
 
+# Forces a fresh apt-get run on every build even when GHA layer caching would
+# otherwise reuse this layer unchanged (same base digest, same Qdrant source
+# revision): apt mirrors publish OS security patches far more often than the
+# ubuntu:24.04 tag digest changes, and this layer is how those patches reach
+# the image.
+ARG CACHEBUST=unknown
+
 ENV DEBIAN_FRONTEND=noninteractive
 # hadolint ignore=DL3008
 RUN apt-get update \
