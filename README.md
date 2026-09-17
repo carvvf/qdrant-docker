@@ -1,5 +1,9 @@
 # Qdrant custom image
 
+> [!NOTE]
+> **Written with AI assistance.** This document was generated with the help of an AI
+> assistant and may contain inaccuracies. Verify anything critical against the source code.
+
 This repository publishes a hardened `linux/amd64` Qdrant image compiled from
 the verified upstream source release corresponding to `qdrant/qdrant:latest`.
 Its final runtime base is `ubuntu:24.04`.
@@ -122,9 +126,12 @@ findings is not published.
 
 ## License and third-party components
 
-This repository is licensed under Apache-2.0, matching Qdrant's license. The
-published image includes a copy of the Apache-2.0 text at
-`/licenses/Apache-2.0.txt`.
+This repository's own original content (the Dockerfile, CI workflows,
+scripts, and documentation) is licensed under Apache-2.0; see `LICENSE`.
+That license is separate from Qdrant's: the published image embeds Qdrant's
+own license text, copied from the resolved source revision at build time, at
+`/licenses/Apache-2.0.txt`. This split matters now that the image is compiled
+from Qdrant source rather than repackaged from the official binary.
 
 The image also contains Qdrant and operating-system packages with their own
 licensing and attribution requirements. BuildKit publishes an SBOM attestation

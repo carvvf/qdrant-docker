@@ -120,8 +120,10 @@ COPY --from=builder /qdrant/tools/entrypoint.sh /qdrant/entrypoint.sh
 COPY --from=builder /static /qdrant/static
 
 # Apache-2.0 requires redistributors to provide recipients a copy of the
-# license. Keep it outside the Qdrant runtime paths.
-COPY LICENSE /licenses/Apache-2.0.txt
+# license. Ship Qdrant's own license text from the resolved source revision
+# (not this repository's LICENSE, which covers this repository's own
+# original content) outside the Qdrant runtime paths.
+COPY --from=builder /qdrant/LICENSE /licenses/Apache-2.0.txt
 
 # Keep the official image's root runtime contract: Ragtime's TLS guard and
 # persistent-volume setup depend on it.

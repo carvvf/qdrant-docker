@@ -109,9 +109,14 @@ jobs:
           cache: false
           format: json
           output: trivy-report-candidate-amd64.json
+          scanners: vuln
           exit-code: '1'
           severity: HIGH,CRITICAL
           vuln-type: os,library
+          # Bundled SBOMs, not code present or executed in the image: our own
+          # cargo-sbom output and the upstream qdrant-web-ui build/test
+          # devDependency manifest.
+          skip-files: /qdrant/qdrant.spdx.json,/qdrant/static/qdrant-web-ui.spdx.json
 
       - name: Upload candidate Trivy report
         if: always()
