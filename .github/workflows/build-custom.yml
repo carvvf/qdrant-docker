@@ -114,6 +114,11 @@ jobs:
           exit-code: '1'
           severity: HIGH,CRITICAL
           vuln-type: os,library
+          # The Web UI's SPDX document is excluded: the dashboard's JavaScript
+          # runs in the operator's browser, and this gate measures the server.
+          # Qdrant's own SPDX document stays in scope, because it lists the Rust
+          # crates compiled into the server binary.
+          skip-files: /qdrant/static/qdrant-web-ui.spdx.json
 
       - name: Upload candidate Trivy report
         if: always()

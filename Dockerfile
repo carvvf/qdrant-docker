@@ -75,6 +75,8 @@ RUN --mount=type=cache,target=/qdrant/target,id=qdrant-cargo-target,sharing=lock
     PATH="/opt/mold/bin:${PATH}" \
     RUSTFLAGS="-C link-arg=-fuse-ld=mold" \
     cargo build --release --features stacktrace --bin qdrant \
+    && mkdir /static \
+    && STATIC_DIR=/static ./tools/sync-web-ui.sh \
     && cargo sbom > /qdrant/qdrant.spdx.json \
     && cp /qdrant/target/release/qdrant /qdrant/qdrant-bin
 
@@ -122,6 +124,7 @@ COPY --from=builder /qdrant/qdrant-bin /qdrant/qdrant
 COPY --from=builder /qdrant/qdrant.spdx.json /qdrant/qdrant.spdx.json
 COPY --from=builder /qdrant/config /qdrant/config
 COPY --from=builder /qdrant/tools/entrypoint.sh /qdrant/entrypoint.sh
+COPY --from=builder /static /qdrant/static
 
 # Apache-2.0 requires redistributors to provide recipients a copy of the
 # license. Ship Qdrant's own license text from the resolved source revision
@@ -135,12 +138,8 @@ WORKDIR /qdrant
 # hadolint ignore=DL3002
 USER 0:0
 
-# The image ships no Web UI: Ragtime uses only the HTTP and gRPC APIs, and the
-# bundled dashboard added a JavaScript dependency tree to the attack surface.
-# Disabling static content keeps Qdrant from looking for the missing folder.
 ENV TZ=Etc/UTC \
-    RUN_MODE=production \
-    QDRANT__SERVICE__ENABLE_STATIC_CONTENT=false
+    RUN_MODE=production
 
 EXPOSE 6333 6334
 

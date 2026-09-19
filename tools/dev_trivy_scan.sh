@@ -95,9 +95,12 @@ else
   merge_status "$?"
 fi
 
-# The embedded Qdrant SPDX document is scanned on purpose: it lists the Rust
-# crates compiled into the server, which Trivy cannot see in the binary itself.
-if scan_target image image "${IMAGE_REF}" --scanners vuln; then
+# Same scope as the CI gate: the Web UI's SPDX document is excluded because the
+# dashboard's JavaScript runs in the operator's browser, not in the server.
+# Qdrant's own SPDX document is scanned: it lists the Rust crates compiled into
+# the server, which Trivy cannot identify in the binary itself.
+if scan_target image image "${IMAGE_REF}" --scanners vuln \
+  --skip-files /qdrant/static/qdrant-web-ui.spdx.json; then
   :
 else
   merge_status "$?"
