@@ -102,8 +102,7 @@
       "options": {
         "cwd": "${workspaceFolder}",
         "env": {
-          "IMAGE_REF": "qdrant-custom:local",
-          "SCAN_SBOM": "${input:trivyScanSbom}"
+          "IMAGE_REF": "qdrant-custom:local"
         }
       },
       "presentation": {
@@ -137,18 +136,6 @@
         "clear": false
       },
       "problemMatcher": []
-    }
-  ],
-  "inputs": [
-    {
-      "id": "trivyScanSbom",
-      "type": "pickString",
-      "description": "Include bundled/embedded SBOM package findings (e.g. qdrant-web-ui devDependencies) in the Trivy image scan?",
-      "options": [
-        "yes",
-        "no"
-      ],
-      "default": "yes"
     }
   ]
 }

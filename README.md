@@ -24,6 +24,10 @@ and with Ragtime's Qdrant deployment:
 
 The image is intentionally amd64-only. It does not publish an arm64 manifest.
 
+The image does not include the Qdrant Web UI (dashboard). Ragtime uses only the
+HTTP and gRPC APIs, so the image leaves out the dashboard's JavaScript
+dependencies and sets `QDRANT__SERVICE__ENABLE_STATIC_CONTENT=false`.
+
 ## Image tags
 
 Published images use two tags:
@@ -121,8 +125,10 @@ Rebuilding on Ubuntu can remediate fixable Ubuntu packages before an official
 Qdrant image is refreshed. It does not make Qdrant, Rust, JavaScript, or other
 upstream dependencies safe by itself. The image retains Qdrant's SPDX document
 and the Trivy gate scans OS and library findings, including dependencies
-reported by that document. A candidate with unresolved HIGH or CRITICAL
-findings is not published.
+reported by that document: it lists the Rust crates compiled into the server,
+which Trivy cannot identify in the binary itself. No embedded file is excluded
+from the scan. A candidate with unresolved HIGH or CRITICAL findings is not
+published.
 
 ## License and third-party components
 

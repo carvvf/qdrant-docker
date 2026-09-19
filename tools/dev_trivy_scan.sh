@@ -9,16 +9,6 @@ IMAGE_REF="${IMAGE_REF:-qdrant-custom:local}"
 REPORT_SEVERITIES="${REPORT_SEVERITIES:-UNKNOWN,LOW,MEDIUM,HIGH,CRITICAL}"
 FAIL_SEVERITIES="${FAIL_SEVERITIES:-HIGH,CRITICAL}"
 REPORTS_DIR="${REPORTS_DIR:-${REPO_ROOT}/reports/trivy}"
-# Files embedded in the runtime image that Trivy analyzes as standalone SBOMs
-# (our own cargo-sbom output and the upstream qdrant-web-ui SBOM). Their
-# lang-pkg findings reflect a dependency manifest, not code actually present
-# or executed in the image; SCAN_SBOM=no skips them for a quicker local look
-# at the image's own OS/runtime footprint.
-SBOM_FILES=(
-  /qdrant/qdrant.spdx.json
-  /qdrant/static/qdrant-web-ui.spdx.json
-)
-SCAN_SBOM="${SCAN_SBOM:-yes}"
 TRIVY_CACHE_DIR="${TRIVY_CACHE_DIR:-${REPORTS_DIR}/cache}"
 HOST_UID="$(id -u)"
 HOST_GID="$(id -g)"
@@ -105,15 +95,9 @@ else
   merge_status "$?"
 fi
 
-declare -a image_extra_args=(--scanners vuln)
-if [ "${SCAN_SBOM}" = "no" ]; then
-  echo "[Trivy] SCAN_SBOM=no: skipping embedded SBOM files: ${SBOM_FILES[*]}" >&2
-  for sbom_file in "${SBOM_FILES[@]}"; do
-    image_extra_args+=(--skip-files "${sbom_file}")
-  done
-fi
-
-if scan_target image image "${IMAGE_REF}" "${image_extra_args[@]}"; then
+# The embedded Qdrant SPDX document is scanned on purpose: it lists the Rust
+# crates compiled into the server, which Trivy cannot see in the binary itself.
+if scan_target image image "${IMAGE_REF}" --scanners vuln; then
   :
 else
   merge_status "$?"

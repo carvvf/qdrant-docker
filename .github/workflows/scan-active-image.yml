@@ -142,10 +142,6 @@ jobs:
           scanners: vuln
           severity: HIGH,CRITICAL
           vuln-type: os,library
-          # Bundled SBOMs, not code present or executed in the image: our own
-          # cargo-sbom output and the upstream qdrant-web-ui build/test
-          # devDependency manifest.
-          skip-files: /qdrant/qdrant.spdx.json,/qdrant/static/qdrant-web-ui.spdx.json
 
       - name: Summarize rebuild decision
         id: summary
@@ -271,10 +267,6 @@ jobs:
           scanners: vuln
           severity: HIGH,CRITICAL
           vuln-type: os,library
-          # Bundled SBOMs, not code present or executed in the image: our own
-          # cargo-sbom output and the upstream qdrant-web-ui build/test
-          # devDependency manifest.
-          skip-files: /qdrant/qdrant.spdx.json,/qdrant/static/qdrant-web-ui.spdx.json
 
       - name: Summarize final vulnerabilities
         id: summary
