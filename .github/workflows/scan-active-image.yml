@@ -3,7 +3,8 @@ run-name: Daily Qdrant source-build scan
 
 on:
   schedule:
-    - cron: '0 12 * * *'
+    # UTC schedule; Europe/Rome: 02:37 CET / 03:37 CEST.
+    - cron: '37 1 * * *'
   workflow_dispatch:
     inputs:
       force_rebuild:

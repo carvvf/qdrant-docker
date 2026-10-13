@@ -3,7 +3,8 @@ run-name: Retention cleanup
 
 on:
   schedule:
-    - cron: '0 4 * * 1'
+    # UTC schedule; Europe/Rome: 01:47 CET / 02:47 CEST.
+    - cron: '47 0 * * 1'
   workflow_dispatch:
     inputs:
       dry_run:
