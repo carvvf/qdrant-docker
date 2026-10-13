@@ -1,8 +1,8 @@
 # syntax=docker/dockerfile:1
-# The Qdrant release tag and commit are resolved by CI from qdrant/qdrant:latest.
+# Local and CI entrypoints resolve the release tag, commit, and image digests.
 ARG QDRANT_SOURCE_REPOSITORY=https://github.com/qdrant/qdrant.git
-ARG QDRANT_SOURCE_REF=v1.19.1
-ARG QDRANT_SOURCE_REVISION=
+ARG QDRANT_SOURCE_REF
+ARG QDRANT_SOURCE_REVISION
 ARG UBUNTU_BASE_IMAGE=ubuntu:24.04
 
 # hadolint ignore=DL3006
@@ -16,12 +16,12 @@ RUN apt-get update \
     && apt-get install -y --no-install-recommends ca-certificates git \
     && rm -rf /var/lib/apt/lists/*
 
-RUN git clone --depth 1 --branch "${QDRANT_SOURCE_REF}" \
+RUN test -n "${QDRANT_SOURCE_REF}" \
+    && test -n "${QDRANT_SOURCE_REVISION}" \
+    && git clone --depth 1 --branch "${QDRANT_SOURCE_REF}" \
       "${QDRANT_SOURCE_REPOSITORY}" /qdrant \
     && actual_revision="$(git -C /qdrant rev-parse HEAD)" \
-    && if [ -n "${QDRANT_SOURCE_REVISION}" ]; then \
-         test "${actual_revision}" = "${QDRANT_SOURCE_REVISION}"; \
-       fi \
+    && test "${actual_revision}" = "${QDRANT_SOURCE_REVISION}" \
     && printf '%s\n' "${actual_revision}" > /qdrant-source-revision
 
 # Keep this toolchain aligned with the upstream Qdrant v1.19 build definition.
@@ -89,6 +89,7 @@ ARG QDRANT_SOURCE_REF
 ARG QDRANT_SOURCE_REVISION
 ARG QDRANT_UPSTREAM_VERSION=unknown
 ARG QDRANT_UPSTREAM_DIGEST=unknown
+ARG QDRANT_IMAGE_VERSION
 ARG UBUNTU_BASE_IMAGE
 ARG UBUNTU_BASE_DIGEST=unknown
 ARG SOURCE_REPOSITORY=https://github.com/carvvf/qdrant-docker
@@ -98,6 +99,7 @@ LABEL org.opencontainers.image.description="Qdrant rebuilt from verified source 
 LABEL org.opencontainers.image.documentation="${SOURCE_REPOSITORY}"
 LABEL org.opencontainers.image.source="${SOURCE_REPOSITORY}"
 LABEL org.opencontainers.image.url="${SOURCE_REPOSITORY}"
+LABEL org.opencontainers.image.version="${QDRANT_IMAGE_VERSION}"
 LABEL io.github.carvvf.qdrant-docker.qdrant.source.repository="${QDRANT_SOURCE_REPOSITORY}"
 LABEL io.github.carvvf.qdrant-docker.qdrant.source.ref="${QDRANT_SOURCE_REF}"
 LABEL io.github.carvvf.qdrant-docker.qdrant.source.revision="${QDRANT_SOURCE_REVISION}"

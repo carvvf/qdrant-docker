@@ -15,6 +15,12 @@ if ! docker image inspect "${IMAGE_REF}" >/dev/null 2>&1; then
   exit 2
 fi
 
+EXPECTED_VERSION="$(docker image inspect "${IMAGE_REF}" --format '{{index .Config.Labels "io.github.carvvf.qdrant-docker.qdrant.upstream.version"}}')"
+if [[ ! "${EXPECTED_VERSION}" =~ ^[0-9]+\.[0-9]+\.[0-9]+([.-][0-9A-Za-z._-]+)?$ ]]; then
+  echo "The image must record its verified upstream Qdrant version. Rebuild it with tools/build_local_image.sh." >&2
+  exit 1
+fi
+
 # Verify the image default without injecting a telemetry override at runtime.
 if ! docker image inspect --format '{{range .Config.Env}}{{println .}}{{end}}' "${IMAGE_REF}" \
   | grep -Fx 'QDRANT__TELEMETRY_DISABLED=true' >/dev/null; then
@@ -100,6 +106,9 @@ if ! docker logs "${CONTAINER_NAME}" 2>&1 | grep -F 'Telemetry reporting disable
   echo "Qdrant did not confirm that telemetry reporting is disabled." >&2
   exit 1
 fi
+
+qdrant_api "http://127.0.0.1:${HOST_PORT}/" \
+  | jq -e --arg expected "${EXPECTED_VERSION}" '.version == $expected' >/dev/null
 
 qdrant_api \
   -X PUT "http://127.0.0.1:${HOST_PORT}/collections/${COLLECTION_NAME}" \

@@ -66,24 +66,61 @@ Qdrant volumes.
 
 ## Local build and validation
 
-Build Qdrant v1.19.1 from source on Ubuntu 24.04. This can take several
-minutes on the first build because Rust dependencies and the Qdrant binary are
-compiled locally:
+Build the Qdrant release currently identified by `qdrant/qdrant:latest` from
+source on Ubuntu 24.04, using the same input resolver as GitHub Actions:
 
 ```bash
-docker build --pull --no-cache \
-  --build-arg QDRANT_SOURCE_REF=v1.19.1 \
-  -t qdrant-custom:local .
+bash tools/build_local_image.sh
 ```
 
-CI additionally resolves the immutable commit for this tag and fails the build
-when the checked-out source does not match it. OCI labels record the Qdrant
-source ref and revision, the official-image digest used as a release signal,
-and the Ubuntu runtime-base digest.
+The VS Code `Docker: build local image` task invokes this entrypoint. It resolves
+and pulls the official `linux/amd64` Qdrant image as a release signal, verifies
+its version, resolves the matching source tag and commit, and pins the Ubuntu
+24.04 runtime manifest digest. The official Qdrant image is not used as the
+runtime base. All resolved values are passed explicitly to the Dockerfile;
+the source checkout must match the expected commit. The first build can take
+several minutes because Rust dependencies and the Qdrant binary are compiled.
+The entrypoint requires Bash, Docker, and Git, with access to Docker Hub and
+GitHub; no Python environment is needed.
+
+To select a specific release while retaining the same verification:
+
+```bash
+QDRANT_SOURCE_REF=v1.19.2 bash tools/build_local_image.sh
+```
+
+`tools/lib/build_inputs.sh` owns the shared resolver used by the local build,
+the standalone build workflow, daily scan, and publication preflight.
+`bash tools/resolve_build_inputs.sh` prints its resolved `key=value` outputs
+without compiling or publishing an image. Optional environment inputs are
+`QDRANT_UPSTREAM_REF`, `QDRANT_UPSTREAM_VERSION`, `QDRANT_UPSTREAM_DIGEST`,
+`QDRANT_SOURCE_REF`, `QDRANT_SOURCE_REVISION`, `UBUNTU_BASE_IMAGE`, and
+`UBUNTU_BASE_DIGEST`. Version, tag, commit, or digest mismatches abort resolution.
+Explicit digest references retain their recorded release signal rather than
+resolving `latest` again. Ubuntu inputs must identify the official 24.04 image.
+
+Local OCI versions use `<qdrant-version>-local`; published images retain
+`<qdrant-version>-custom.<N>`. OCI labels record the source ref and revision,
+official-image digest, and Ubuntu runtime digest in both paths. The image
+version label is set explicitly instead of inheriting Ubuntu's `24.04` label.
+Direct Dockerfile builds require verified source arguments; there is no stale
+Qdrant release fallback. This aligns input selection and provenance, not binary
+reproducibility across different build times. Publication still requires the
+existing vulnerability and runtime gates.
+
+Run the resolver regression tests with Python 3's standard library. Docker and
+Git are simulated; these tests require no daemon, network, or package installs:
+
+```bash
+python3 -m unittest discover -s tests -p test_build_inputs.py
+```
+
+The three build/scan/publish workflows run this check before resolving inputs.
 
 Run the compatibility smoke test. It applies the relevant Ragtime container
-restrictions, creates a collection and point, restarts Qdrant, verifies
-persistence, and removes the test resources:
+restrictions, checks the running server version against its upstream label,
+creates a collection and point, restarts Qdrant, verifies persistence, and removes
+the test resources:
 
 ```bash
 IMAGE_REF=qdrant-custom:local bash tests/test-qdrant-image.sh
@@ -137,15 +174,17 @@ part of that procedure.
 The workspace provides these tasks without requiring locally installed lint or
 scanner binaries:
 
-- `Docker: build local image` compiles `qdrant-custom:local` from the default
-  Qdrant source release on Ubuntu 24.04.
+- `Docker: build local image` compiles `qdrant-custom:local` from the
+  verified official Qdrant release signal on Ubuntu 24.04.
 - `Test: Qdrant runtime` builds the image and runs the Ragtime-compatible
   smoke test.
 - `Trivy: scan CVE` builds the image, runs a pinned Trivy container against
   the repository and local image, writes reports under `reports/trivy`, and
   fails on HIGH or CRITICAL findings.
-- `Test: all` runs Dockerfile, shell, and workflow linting and the runtime
-  test in sequence. Run `Trivy: scan CVE` separately.
+- `Test: build inputs` checks release resolution and mismatch failures using
+  simulated infrastructure.
+- `Test: all` runs resolver regression tests, Dockerfile, shell, and workflow
+  linting, and the runtime test in sequence. Run `Trivy: scan CVE` separately.
 
 The first Trivy run downloads the vulnerability database into
 `reports/trivy/cache`; later runs reuse it. Delete that directory to force a
