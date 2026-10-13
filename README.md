@@ -89,12 +89,48 @@ persistence, and removes the test resources:
 IMAGE_REF=qdrant-custom:local bash tests/test-qdrant-image.sh
 ```
 
-For a local Trivy filesystem, Dockerfile, and image scan, install Trivy and
-run:
+For a local Trivy filesystem, Dockerfile, and image scan, use the same
+Trivy 0.75.0 container as CI; no host Trivy installation is required:
 
 ```bash
-IMAGE_REF=qdrant-custom:local scripts/trivy/scan-image.sh
+IMAGE_REF=qdrant-custom:local bash tools/dev_trivy_scan.sh
 ```
+
+Alternatively, install Trivy 0.75.0 on the host and run
+`IMAGE_REF=qdrant-custom:local scripts/trivy/scan-image.sh`.
+This entrypoint rejects other host versions to keep scans aligned with CI.
+
+## Telemetry policy
+
+The runtime image sets `QDRANT__TELEMETRY_DISABLED=true`, so Qdrant's
+anonymous reporting is disabled by default for local builds and GHCR releases,
+even without a Compose override. This uses Qdrant's native configuration;
+an explicit runtime override can re-enable reporting. Local metrics remain
+available. The shared runtime smoke test checks the image environment and the
+startup confirmation without setting a telemetry override in `docker run`.
+
+All repository Trivy entrypoints disable anonymous usage reporting with
+`TRIVY_DISABLE_TELEMETRY=true` and announcement/version requests with
+`TRIVY_SKIP_VERSION_CHECK=true`. Workflows using `trivy-action` receive these
+settings through workflow environment variables; Docker invocations pass them
+explicitly into the scanner container. The native local script exports both
+settings before invoking Trivy. Scans use Trivy 0.75.0 by default.
+Vulnerability database downloads, security checks, JSON reports, and the
+HIGH/CRITICAL publication gate remain active. These opt-outs do not make
+builds or scans network-free.
+
+Image defaults take effect only after rebuilding and redeploying. Repository
+Dockerfile changes alone do not trigger the daily workflow's rebuild decision.
+After integrating the changes into the default branch, request a rebuild:
+
+```bash
+gh workflow run scan-active-image.yml --repo carvvf/qdrant-docker -f force_rebuild=true
+```
+
+The workflow runs the existing build, scan, runtime-test, and publication gates.
+After publication, follow the downstream update procedure above, retaining the
+data volumes. The deliberate failure notification after a clean rebuild remains
+part of that procedure.
 
 ## VS Code tasks
 

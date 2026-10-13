@@ -139,7 +139,8 @@ WORKDIR /qdrant
 USER 0:0
 
 ENV TZ=Etc/UTC \
-    RUN_MODE=production
+    RUN_MODE=production \
+    QDRANT__TELEMETRY_DISABLED=true
 
 EXPOSE 6333 6334
 

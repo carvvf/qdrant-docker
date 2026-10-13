@@ -15,6 +15,13 @@ if ! docker image inspect "${IMAGE_REF}" >/dev/null 2>&1; then
   exit 2
 fi
 
+# Verify the image default without injecting a telemetry override at runtime.
+if ! docker image inspect --format '{{range .Config.Env}}{{println .}}{{end}}' "${IMAGE_REF}" \
+  | grep -Fx 'QDRANT__TELEMETRY_DISABLED=true' >/dev/null; then
+  echo "The Qdrant image must disable telemetry reporting by default." >&2
+  exit 1
+fi
+
 cleanup() {
   local exit_status=$?
   if [ "${exit_status}" -ne 0 ]; then
@@ -88,6 +95,11 @@ start_container
 
 wait_for_endpoint /healthz | grep -qx 'healthz check passed'
 wait_for_endpoint /readyz | grep -qx 'all shards are ready'
+
+if ! docker logs "${CONTAINER_NAME}" 2>&1 | grep -F 'Telemetry reporting disabled' >/dev/null; then
+  echo "Qdrant did not confirm that telemetry reporting is disabled." >&2
+  exit 1
+fi
 
 qdrant_api \
   -X PUT "http://127.0.0.1:${HOST_PORT}/collections/${COLLECTION_NAME}" \
