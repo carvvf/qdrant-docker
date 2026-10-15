@@ -94,7 +94,9 @@ The expected checks are:
 
 1. Resolve the official Qdrant version, source tag and commit, upstream image
    digest, and Ubuntu runtime-base digest.
-2. Scan the active GHCR `latest` image and retain the report.
+2. Scan the active GHCR `latest` image and retain the report, unless a
+   build-input signal in item 3 (or a manual request) already requires a
+   rebuild; the candidate and the republished `latest` are scanned anyway.
 3. Build a custom candidate when the Qdrant source revision or Ubuntu runtime
    digest has changed, the active image was built from another commit of this
    repository (checked daily and after every push to `master`), the active
