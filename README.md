@@ -10,7 +10,8 @@ Its final runtime base is `ubuntu:24.04`.
 
 Its daily GitHub Actions workflow resolves the official-image manifest digest,
 the matching Qdrant source tag and commit, and the Ubuntu runtime manifest
-digest. It rebuilds when either immutable input changes, scans the candidate
+digest. It rebuilds when either immutable input changes or when the active
+image was built from another commit of this repository, scans the candidate
 with Trivy, and publishes it to GHCR only if HIGH and CRITICAL OS or library
 findings are absent.
 
@@ -156,9 +157,14 @@ Vulnerability database downloads, security checks, JSON reports, and the
 HIGH/CRITICAL publication gate remain active. These opt-outs do not make
 builds or scans network-free.
 
-Image defaults take effect only after rebuilding and redeploying. Repository
-Dockerfile changes alone do not trigger the daily workflow's rebuild decision.
-After integrating the changes into the default branch, request a rebuild:
+Image defaults take effect only after rebuilding and redeploying.
+
+Every push to `master` starts `rebuild-on-push.yml`, which runs the daily
+workflow with the same gates. The image records the commit of this repository it
+was built from (`io.github.carvvf.qdrant-docker.repository.revision`), and both
+workflows rebuild when the active image carries another commit, also when the
+upstream version and runtime base are unchanged. Documentation-only commits are
+included. To rebuild without a new commit, request one manually:
 
 ```bash
 gh workflow run scan-active-image.yml --repo carvvf/qdrant-docker -f force_rebuild=true
