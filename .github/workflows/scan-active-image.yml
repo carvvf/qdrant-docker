@@ -27,6 +27,19 @@ permissions:
   contents: read
   packages: read
 
+# Serializes the whole decision-to-publication sequence of daily, manual and
+# push-triggered runs: a run that starts while another is in progress waits and
+# then sees what it published, so both cannot decide to rebuild the same commit.
+# GitHub keeps one pending run per group and a newer one replaces it. Each run
+# evaluates every rebuild signal at the commit that triggered it, which for
+# master runs is the master head at trigger time, so the replacing run covers
+# at least the commit of the run it replaced. The group must differ from
+# publish-custom.yml's, which this workflow calls, and the rebuild-on-push.yml
+# caller must not declare it, or GitHub reports a deadlock.
+concurrency:
+  group: qdrant-image-scan-${{ github.repository }}
+  cancel-in-progress: false
+
 jobs:
   initial_scan:
     runs-on: ubuntu-latest
@@ -176,12 +189,23 @@ jobs:
             echo "reasons=${reason_text}"
           } >> "${GITHUB_OUTPUT}"
 
+      - name: Resolve Trivy patch release
+        id: trivy
+        if: steps.input_decision.outputs.required == 'false'
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          set -euo pipefail
+          version="$(bash scripts/trivy/resolve-version.sh)"
+          echo "version=${version}" >> "${GITHUB_OUTPUT}"
+          echo "- Trivy: ${version}" >> "${GITHUB_STEP_SUMMARY}"
+
       - name: Scan active image with Trivy
         if: steps.input_decision.outputs.required == 'false'
         uses: aquasecurity/trivy-action@0.35.0
         with:
           image-ref: ${{ steps.resolve.outputs.image_ref }}
-          version: v0.75.0
+          version: v${{ steps.trivy.outputs.version }}
           cache: false
           format: json
           output: trivy-report-initial.json
@@ -275,6 +299,9 @@ jobs:
       packages: read
 
     steps:
+      - name: Checkout repository
+        uses: actions/checkout@v6.0.2
+
       - name: Log in to GHCR
         uses: docker/login-action@v4.0.0
         with:
@@ -282,13 +309,23 @@ jobs:
           username: ${{ github.actor }}
           password: ${{ github.token }}
 
+      - name: Resolve Trivy patch release
+        id: trivy
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          set -euo pipefail
+          version="$(bash scripts/trivy/resolve-version.sh)"
+          echo "version=${version}" >> "${GITHUB_OUTPUT}"
+          echo "- Trivy: ${version}" >> "${GITHUB_STEP_SUMMARY}"
+
       # Deliberately scan mutable latest after publication. Its changed result
       # triggers the downstream update notification job below.
       - name: Scan rebuilt active image with Trivy
         uses: aquasecurity/trivy-action@0.35.0
         with:
           image-ref: ${{ needs.initial_scan.outputs.image_ref }}
-          version: v0.75.0
+          version: v${{ steps.trivy.outputs.version }}
           cache: false
           format: json
           output: trivy-report-final.json

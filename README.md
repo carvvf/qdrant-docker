@@ -127,16 +127,25 @@ the test resources:
 IMAGE_REF=qdrant-custom:local bash tests/test-qdrant-image.sh
 ```
 
+Local and CI scans use the newest published patch release of Trivy 0.76.
+`scripts/trivy/resolve-version.sh` resolves it from GitHub's release list,
+ignoring drafts, pre-releases, and other minor series, so scanner fixes arrive
+without a repository change; moving to another minor series is a deliberate
+edit to `TRIVY_SERIES` in that script. Each workflow scan records the resolved
+version in its job summary. `TRIVY_VERSION` selects an explicit 0.76 release.
+The resolver requires curl and jq; it uses `GH_TOKEN`, `GITHUB_TOKEN`, or an
+authenticated GitHub CLI when available to avoid anonymous API rate limits.
+
 For a local Trivy filesystem, Dockerfile, and image scan, use the same
-Trivy 0.75.0 container as CI; no host Trivy installation is required:
+Trivy container as CI; no host Trivy installation is required:
 
 ```bash
 IMAGE_REF=qdrant-custom:local bash tools/dev_trivy_scan.sh
 ```
 
-Alternatively, install Trivy 0.75.0 on the host and run
+Alternatively, install any Trivy 0.76.x release on the host and run
 `IMAGE_REF=qdrant-custom:local scripts/trivy/scan-image.sh`.
-This entrypoint rejects other host versions to keep scans aligned with CI.
+This entrypoint rejects other minor series to keep scans aligned with CI.
 
 ## Telemetry policy
 
@@ -152,7 +161,7 @@ All repository Trivy entrypoints disable anonymous usage reporting with
 `TRIVY_SKIP_VERSION_CHECK=true`. Workflows using `trivy-action` receive these
 settings through workflow environment variables; Docker invocations pass them
 explicitly into the scanner container. The native local script exports both
-settings before invoking Trivy. Scans use Trivy 0.75.0 by default.
+settings before invoking Trivy. Scans use the newest Trivy 0.76.x by default.
 Vulnerability database downloads, security checks, JSON reports, and the
 HIGH/CRITICAL publication gate remain active. These opt-outs do not make
 builds or scans network-free.
@@ -164,7 +173,12 @@ workflow with the same gates. The image records the commit of this repository it
 was built from (`io.github.carvvf.qdrant-docker.repository.revision`), and both
 workflows rebuild when the active image carries another commit, also when the
 upstream version and runtime base are unchanged. Documentation-only commits are
-included. To rebuild without a new commit, request one manually:
+included. Daily, manual and push-triggered runs of `scan-active-image.yml` are
+serialized, so two of them never both rebuild the same commit: a run started
+while another is in progress waits, and GitHub keeps only the most recent waiting
+run. A waiting manual `force_rebuild` replaced this way must be requested again.
+A `publish-custom.yml` run started directly is serialized only with other
+publications. To rebuild without a new commit, request one manually:
 
 ```bash
 gh workflow run scan-active-image.yml --repo carvvf/qdrant-docker -f force_rebuild=true

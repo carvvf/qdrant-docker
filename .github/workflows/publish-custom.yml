@@ -256,21 +256,32 @@ jobs:
                 "docker-archive:${IMAGE_ARCHIVE}:${LOCAL_IMAGE_REF}"
             '
 
+      - name: Resolve Trivy patch release
+        id: trivy
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          set -euo pipefail
+          version="$(bash scripts/trivy/resolve-version.sh)"
+          echo "version=${version}" >> "${GITHUB_OUTPUT}"
+          echo "- Trivy: ${version}" >> "${GITHUB_STEP_SUMMARY}"
+
       - name: Scan candidate archive with Trivy
         env:
           TRIVY_CACHE_DIR: /tmp/trivy-cache
+          TRIVY_IMAGE: aquasec/trivy:${{ steps.trivy.outputs.version }}
         run: |
           set -euo pipefail
 
           mkdir -p "${TRIVY_CACHE_DIR}"
-          docker pull aquasec/trivy:0.75.0
+          docker pull "${TRIVY_IMAGE}"
 
           docker run --rm \
             -e TRIVY_DISABLE_TELEMETRY=true \
             -e TRIVY_SKIP_VERSION_CHECK=true \
             -v "${IMAGE_ARCHIVE}:${IMAGE_ARCHIVE}:ro" \
             -v "${TRIVY_CACHE_DIR}:/root/.cache/trivy" \
-            aquasec/trivy:0.75.0 \
+            "${TRIVY_IMAGE}" \
             image \
             --input "${IMAGE_ARCHIVE}" \
             --format json \

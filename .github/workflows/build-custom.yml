@@ -119,11 +119,21 @@ jobs:
             SOURCE_REPOSITORY=https://github.com/${{ github.repository }}
             CACHEBUST=${{ github.run_id }}
 
+      - name: Resolve Trivy patch release
+        id: trivy
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          set -euo pipefail
+          version="$(bash scripts/trivy/resolve-version.sh)"
+          echo "version=${version}" >> "${GITHUB_OUTPUT}"
+          echo "- Trivy: ${version}" >> "${GITHUB_STEP_SUMMARY}"
+
       - name: Scan candidate with Trivy
         uses: aquasecurity/trivy-action@0.35.0
         with:
           image-ref: ${{ env.IMAGE_REF }}
-          version: v0.75.0
+          version: v${{ steps.trivy.outputs.version }}
           cache: false
           format: json
           output: trivy-report-candidate-amd64.json
