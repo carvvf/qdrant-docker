@@ -68,18 +68,17 @@ image does not contain `curl` or `openssl`.
   dependencies only when their respective upstream releases contain a fix. It
   does not remediate findings without an available fix. Never conceal such
   findings or publish a candidate that violates the security policy.
-- Scan image vulnerabilities with Trivy. HIGH and CRITICAL findings are the
-  default publication gate for OS and library vulnerabilities unless the user
-  explicitly changes that policy.
+- Scan image vulnerabilities with Trivy. Fixable HIGH and CRITICAL findings
+  block publication. Findings without a listed fixed version are retained and
+  produce explanatory GitHub warnings without blocking publication.
 - Produce and retain JSON scan reports as GitHub Actions artifacts. A report
   is evidence, not a reason to weaken the gate.
 - Use immutable release tags in the form
   `<qdrant-version>-custom.<N>` and update the mutable `latest` tag only after
   the candidate has passed build, scan, and runtime checks.
-- The daily workflow intentionally fails after a successful rebuild and final
-  scan to notify downstream operators that they must pull and redeploy the new
-  `latest` image. Preserve this behavior unless the user requests another
-  notification mechanism.
+- The daily workflow succeeds after a successful rebuild and clean final scan.
+  Operators remain responsible for pulling and redeploying the new `latest`
+  image; do not introduce intentional failures as update notifications.
 - Serialize scan/publish runs with a shared GitHub Actions concurrency group.
   This prevents competing runs from racing on `latest` or the custom sequence
   number.
@@ -107,8 +106,9 @@ The expected checks are:
    and persistence across a restart using the storage volume.
 6. Publish the versioned tag and `latest` only after every required check
    passes; inspect the published manifest to confirm `linux/amd64`.
-7. Re-scan the published mutable `latest` tag and intentionally signal the
-   downstream-update notification only when a rebuilt image is clean.
+7. Re-scan the published mutable `latest` tag and fail if fixable HIGH or CRITICAL
+   vulnerabilities remain. Findings without a listed fix produce warnings; a
+   clean rebuild completes successfully without a vulnerability warning.
 
 Local developer tooling may provide filesystem, Dockerfile configuration, and
 image scans. Keep generated reports out of image build contexts and version
@@ -161,3 +161,20 @@ For each meaningful change, report:
 3. How to validate it locally or in GitHub Actions.
 4. Downstream compatibility and rollout implications.
 5. Any remaining vulnerabilities, limitations, or required operator action.
+
+## CI Vulnerability Publication Policy
+
+1. A clean security-triggered rebuild completes successfully without an intentional
+   notification failure or a residual-vulnerability warning.
+2. HIGH/CRITICAL OS and library findings with a fixed version listed by Trivy block
+   publication and fail the workflow, including when pins or compatibility prevent
+   adopting that fix automatically.
+3. Findings without a listed fixed version do not block publication. Emit explicit
+   GitHub warning annotations with CVE, package, installed version, and target;
+   preserve the details in the job summary and retained scan evidence.
+4. Apply the same decision to candidates, all published architectures, and final
+   scans. Do not emit initial-scan warnings that can survive a successful remediation.
+5. Scanner failures and missing, malformed, or incomplete reports remain errors.
+   Never use ignored failures or discard unfixed findings to make the gate pass.
+6. Keep build, runtime, unit-test, provenance, and publication checks active. Manual
+   workflow entrypoints must use the same security gate.

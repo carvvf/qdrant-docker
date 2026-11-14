@@ -1,5 +1,7 @@
 # Qdrant custom image
 
+CI publication blocks fixable HIGH/CRITICAL findings and reports findings without a listed fix as warnings. See the [CI security policy](docs/ci-security-policy.md).
+
 > [!NOTE]
 > **Written with AI assistance.** This document was generated with the help of an AI
 > assistant and may contain inaccuracies. Verify anything critical against the source code.
@@ -12,8 +14,9 @@ Its daily GitHub Actions workflow resolves the official-image manifest digest,
 the matching Qdrant source tag and commit, and the Ubuntu runtime manifest
 digest. It rebuilds when either immutable input changes or when the active
 image was built from another commit of this repository, scans the candidate
-with Trivy, and publishes it to GHCR only if HIGH and CRITICAL OS or library
-findings are absent.
+with Trivy, and publishes it to GHCR only if fixable HIGH and CRITICAL OS or
+library findings are absent. Findings without a listed fixed version produce
+explicit warning annotations and remain in the retained evidence.
 
 The runtime interface intentionally remains compatible with the official image
 and with Ragtime's Qdrant deployment:
@@ -33,9 +36,9 @@ Published images use two tags:
 - `latest` moves only after the candidate has passed the build, Trivy, and
   runtime test gates.
 
-The daily workflow deliberately reports failure after a clean rebuild. This is
-the downstream update signal: an operator should pull and redeploy the new
-image rather than treating the notification as a failed publication.
+The daily workflow completes successfully after a clean rebuild. Operators
+should review workflow summaries and published tags, then pull and redeploy
+the new image. Real build, scan, or runtime-check failures still fail the workflow.
 
 For a controlled rollout, use an immutable tag. For example:
 
@@ -191,8 +194,8 @@ gh workflow run scan-active-image.yml --repo carvvf/qdrant-docker -f force_rebui
 
 The workflow runs the existing build, scan, runtime-test, and publication gates.
 After publication, follow the downstream update procedure above, retaining the
-data volumes. The deliberate failure notification after a clean rebuild remains
-part of that procedure.
+data volumes. A clean rebuild completes successfully; operators remain
+responsible for deploying the published image.
 
 ## VS Code tasks
 
@@ -225,8 +228,8 @@ reported by that document: it lists the Rust crates compiled into the server,
 which Trivy cannot identify in the binary itself. The gate measures the server:
 the Web UI's SPDX document (`/qdrant/static/qdrant-web-ui.spdx.json`) is excluded,
 because the dashboard's JavaScript runs in the operator's browser. The Web UI
-remains in the image. A candidate with unresolved HIGH or CRITICAL findings is
-not published.
+remains in the image. A candidate with fixable HIGH or CRITICAL findings is
+not published. Findings without a listed fix are retained and reported as warnings.
 
 ## License and third-party components
 
