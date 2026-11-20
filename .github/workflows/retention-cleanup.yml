@@ -24,11 +24,14 @@ jobs:
   cleanup-ghcr:
     runs-on: ubuntu-latest
     steps:
-      - name: Delete old GHCR versions while retaining rollback images
+      - name: Delete old GHCR versions while retaining rollback and upgrade-path images
         env:
           GH_TOKEN: ${{ github.token }}
           RETENTION_DAYS: '60'
           RETAIN_CUSTOM_VERSIONS: '10'
+          # Qdrant upgrades one minor version at a time, so a deployment several minors
+          # behind needs the newest rebuild of each intermediate minor, whatever its age.
+          RETAIN_MINOR_SERIES: '4'
           DRY_RUN: ${{ inputs.dry_run || 'false' }}
         run: |
           set -euo pipefail
@@ -73,6 +76,24 @@ jobs:
               | .id
             ' <<<"${versions_json}"
           )"
+          # The newest custom rebuild of each of the newest minor series.
+          minor_series_version_ids="$(
+            jq -r '
+              [
+                .[]
+                | . as $version
+                | (.metadata.container.tags // [])[]
+                | capture("^(?<major>[0-9]+)\\.(?<minor>[0-9]+)\\.(?<patch>[0-9]+)-custom\\.(?<build>[0-9]+)$")
+                | {id: $version.id, order: [(.major, .minor, .patch, .build) | tonumber]}
+              ]
+              | group_by(.order[0:2])
+              | map(max_by(.order))
+              | sort_by(.order)
+              | reverse
+              | .[0:env.RETAIN_MINOR_SERIES | tonumber][]
+              | .id
+            ' <<<"${versions_json}"
+          )"
           while IFS= read -r version; do
             scanned=$((scanned + 1))
             version_id="$(jq -r '.id' <<<"${version}")"
@@ -87,6 +108,11 @@ jobs:
             if grep -Fxq "${version_id}" <<<"${retained_version_ids}"; then
               kept=$((kept + 1))
               echo "KEEP id=${version_id} tags=[${tags}] reason=rollback-retention"
+              continue
+            fi
+            if grep -Fxq "${version_id}" <<<"${minor_series_version_ids}"; then
+              kept=$((kept + 1))
+              echo "KEEP id=${version_id} tags=[${tags}] reason=minor-series-retention"
               continue
             fi
             if [ -z "${updated_at}" ] || [ "$(date -u -d "${updated_at}" +%s)" -ge "${cutoff_epoch}" ]; then
@@ -110,6 +136,7 @@ jobs:
             echo '## GHCR retention result'
             echo "- Retention days: ${RETENTION_DAYS}"
             echo "- Custom versions retained for rollback: ${RETAIN_CUSTOM_VERSIONS}"
+            echo "- Minor series retained for one-minor upgrades: ${RETAIN_MINOR_SERIES}"
             echo "- Dry run: ${DRY_RUN}"
             echo "- Versions scanned: ${scanned}"
             echo "- Versions kept: ${kept}"
