@@ -139,6 +139,17 @@ For development, `latest` is acceptable. For controlled production rollouts,
 prefer an explicit immutable `-custom.N` tag so rollback and provenance are
 unambiguous.
 
+GHCR retention must keep every tag a deployment may still pull, and keep it
+pullable:
+
+- the newest rebuild of each of the last four minor series, because Qdrant
+  upgrades one minor version at a time; the three-node Ragtime suite selects
+  at most one minor past the installed one;
+- the platform and attestation manifests of every kept tag, which GHCR lists
+  as untagged versions;
+- every page of the package listing, since the oldest versions are on the
+  last pages.
+
 ## Working principles
 
 - Prefer small, additive, clearly documented changes.
