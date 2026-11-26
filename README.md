@@ -12,7 +12,9 @@ Its final runtime base is `ubuntu:24.04`.
 
 Its daily GitHub Actions workflow resolves the official-image manifest digest,
 the matching Qdrant source tag and commit, and the Ubuntu runtime manifest
-digest. It rebuilds when either immutable input changes or when the active
+digest. It rebuilds when either immutable input changes, when the active image
+lacks an Ubuntu package upgrade that the build would install (`apt-get -s
+upgrade` inside it, see `tools/lib/package_upgrades.sh`), or when the active
 image was built from another commit of this repository, scans the candidate
 with Trivy, and publishes it to GHCR only if fixable HIGH and CRITICAL OS or
 library findings are absent. Findings without a listed fixed version produce
