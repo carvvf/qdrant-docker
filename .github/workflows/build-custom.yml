@@ -35,25 +35,32 @@ on:
   workflow_call:
     inputs:
       image_tag_suffix:
-        required: true
+        required: false
+        default: ''
         type: string
       qdrant_source_ref:
-        required: true
+        required: false
+        default: ''
         type: string
       qdrant_source_revision:
-        required: true
+        required: false
+        default: ''
         type: string
       qdrant_upstream_version:
-        required: true
+        required: false
+        default: ''
         type: string
       qdrant_upstream_digest:
-        required: true
+        required: false
+        default: ''
         type: string
       ubuntu_base_ref:
-        required: true
+        required: false
+        default: ''
         type: string
       ubuntu_base_digest:
-        required: true
+        required: false
+        default: ''
         type: string
 
 env:
