@@ -1,0 +1,71 @@
+{
+  $schema: "https://docs.renovatebot.com/renovate-schema.json",
+  // Renovate proposes only what the image workflows do not move on their own. Rebuilds
+  // already take the Qdrant release behind qdrant/qdrant:latest, the Ubuntu base digest
+  // and its package upgrades, and the newest Trivy patch of its line.
+  // Keep pinned GitHub Actions on a commit digest, with the release tag in a comment.
+  extends: ["helpers:pinGitHubActionDigests"],
+  enabledManagers: ["dockerfile", "github-actions", "custom.regex"],
+  // The Dependency Dashboard lists the reviewed change, a new Ubuntu LTS release, which
+  // is proposed as its own pull request only once approved there. Every other update
+  // goes in one cumulative pull request. Nothing is merged automatically.
+  dependencyDashboard: { enabled: true },
+  automerge: false,
+  // Major updates stay in the cumulative pull request instead of a branch of their own.
+  separateMajorMinor: false,
+  customManagers: [
+    {
+      // Annotated constants of tools/lib/build_inputs.sh: UBUNTU_SERIES.
+      customType: "regex",
+      managerFilePatterns: ["/^tools/lib/build_inputs\\.sh$/"],
+      matchStrings: [
+        "# renovate: datasource=(?<datasource>\\S+) depName=(?<depName>\\S+)(?: versioning=(?<versioning>\\S+))?\\n[A-Z_]+='(?<currentValue>[^']+)'",
+      ],
+      versioningTemplate: "{{#if versioning}}{{{versioning}}}{{else}}docker{{/if}}",
+    },
+    {
+      // Only the Trivy release line is pinned; resolve-version.sh takes its newest patch.
+      // TRIVY_FLOOR is not rewritten: a floor below the new line is still satisfied.
+      customType: "regex",
+      managerFilePatterns: ["/^scripts/trivy/resolve-version\\.sh$/"],
+      matchStrings: ["TRIVY_SERIES='(?<currentValue>\\d+\\.\\d+)'"],
+      datasourceTemplate: "docker",
+      depNameTemplate: "aquasec/trivy",
+      extractVersionTemplate: "^(?<version>\\d+\\.\\d+)\\.\\d+$",
+      versioningTemplate: "loose",
+    },
+    {
+      // The mold linker release the builder downloads.
+      customType: "regex",
+      managerFilePatterns: ["/^Dockerfile$/"],
+      matchStrings: ["ARG MOLD_VERSION=(?<currentValue>\\d+\\.\\d+\\.\\d+)"],
+      datasourceTemplate: "github-releases",
+      depNameTemplate: "rui314/mold",
+      extractVersionTemplate: "^v(?<version>.+)$",
+    },
+  ],
+  packageRules: [
+    {
+      // One cumulative pull request per run, rebased while new updates arrive.
+      matchPackageNames: ["*"],
+      groupName: "uncovered dependencies",
+    },
+    {
+      // UBUNTU_SERIES and the Dockerfile default that mirrors it move together.
+      matchDepNames: ["ubuntu"],
+      versioning: "ubuntu",
+      dependencyDashboardApproval: true,
+      groupName: "Ubuntu LTS release",
+      prBodyNotes: [
+        "A new Ubuntu LTS release changes the runtime libraries Qdrant links against and its base packages. Review the release notes, the pull request checks and the Ragtime runtime test before merging.",
+      ],
+    },
+    {
+      // The builder tag names the Rust release and the Debian release it runs on. Docker
+      // versioning reads it as an invalid value; Rust releases are offered here, on the
+      // same Debian release.
+      matchDepNames: ["lukemathwalker/cargo-chef"],
+      versioning: "regex:^latest-rust-(?<major>\\d+)\\.(?<minor>\\d+)\\.(?<patch>\\d+)-(?<compatibility>[a-z]+)$",
+    },
+  ],
+}

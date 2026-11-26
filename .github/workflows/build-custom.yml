@@ -35,25 +35,32 @@ on:
   workflow_call:
     inputs:
       image_tag_suffix:
-        required: true
+        required: false
+        default: ''
         type: string
       qdrant_source_ref:
-        required: true
+        required: false
+        default: ''
         type: string
       qdrant_source_revision:
-        required: true
+        required: false
+        default: ''
         type: string
       qdrant_upstream_version:
-        required: true
+        required: false
+        default: ''
         type: string
       qdrant_upstream_digest:
-        required: true
+        required: false
+        default: ''
         type: string
       ubuntu_base_ref:
-        required: true
+        required: false
+        default: ''
         type: string
       ubuntu_base_digest:
-        required: true
+        required: false
+        default: ''
         type: string
 
 env:
@@ -119,6 +126,7 @@ jobs:
             QDRANT_UPSTREAM_DIGEST=${{ steps.build_inputs.outputs.upstream_digest }}
             UBUNTU_BASE_IMAGE=${{ steps.build_inputs.outputs.ubuntu_base_ref }}
             UBUNTU_BASE_DIGEST=${{ steps.build_inputs.outputs.ubuntu_base_digest }}
+            UBUNTU_SERIES=${{ steps.build_inputs.outputs.ubuntu_series }}
             SOURCE_REPOSITORY=https://github.com/${{ github.repository }}
             CACHEBUST=${{ github.run_id }}
 

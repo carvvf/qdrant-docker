@@ -8,11 +8,17 @@ CI publication blocks fixable HIGH/CRITICAL findings and reports findings withou
 
 This repository publishes a hardened `linux/amd64` Qdrant image compiled from
 the verified upstream source release corresponding to `qdrant/qdrant:latest`.
-Its final runtime base is `ubuntu:24.04`.
+Its final runtime base is the Ubuntu LTS release pinned as `UBUNTU_SERIES` in
+`tools/lib/build_inputs.sh`. Every resolved reference, check and label derives
+from that constant, and the tests keep the Dockerfile default for direct builds
+equal to it. A new LTS release is a reviewed change, listed on the Dependency
+Dashboard and proposed as a pull request only once approved.
 
 Its daily GitHub Actions workflow resolves the official-image manifest digest,
 the matching Qdrant source tag and commit, and the Ubuntu runtime manifest
-digest. It rebuilds when either immutable input changes or when the active
+digest. It rebuilds when either immutable input changes, when the active image
+lacks an Ubuntu package upgrade that the build would install (`apt-get -s
+upgrade` inside it, see `tools/lib/package_upgrades.sh`), or when the active
 image was built from another commit of this repository, scans the candidate
 with Trivy, and publishes it to GHCR only if fixable HIGH and CRITICAL OS or
 library findings are absent. Findings without a listed fixed version produce
@@ -99,21 +105,22 @@ four minor series.
 ## Local build and validation
 
 Build the Qdrant release currently identified by `qdrant/qdrant:latest` from
-source on Ubuntu 24.04, using the same input resolver as GitHub Actions:
+source on the pinned Ubuntu release, using the same input resolver as GitHub
+Actions:
 
 ```bash
 bash tools/build_local_image.sh
 ```
 
-The VS Code `Docker: build local image` task invokes this entrypoint. It resolves
-and pulls the official `linux/amd64` Qdrant image as a release signal, verifies
-its version, resolves the matching source tag and commit, and pins the Ubuntu
-24.04 runtime manifest digest. The official Qdrant image is not used as the
-runtime base. All resolved values are passed explicitly to the Dockerfile;
-the source checkout must match the expected commit. The first build can take
-several minutes because Rust dependencies and the Qdrant binary are compiled.
-The entrypoint requires Bash, Docker, and Git, with access to Docker Hub and
-GitHub; no Python environment is needed.
+The VS Code `Docker: build local image` task invokes this entrypoint. It
+resolves and pulls the official `linux/amd64` Qdrant image as a release signal,
+verifies its version, resolves the matching source tag and commit, and pins the
+runtime manifest digest of the pinned Ubuntu release. The official Qdrant image
+is not used as the runtime base. All resolved values are passed explicitly to
+the Dockerfile; the source checkout must match the expected commit. The first
+build can take several minutes because Rust dependencies and the Qdrant binary
+are compiled. The entrypoint requires Bash, Docker, and Git, with access to
+Docker Hub and GitHub; no Python environment is needed.
 
 To select a specific release while retaining the same verification:
 
@@ -129,12 +136,13 @@ without compiling or publishing an image. Optional environment inputs are
 `QDRANT_SOURCE_REF`, `QDRANT_SOURCE_REVISION`, `UBUNTU_BASE_IMAGE`, and
 `UBUNTU_BASE_DIGEST`. Version, tag, commit, or digest mismatches abort resolution.
 Explicit digest references retain their recorded release signal rather than
-resolving `latest` again. Ubuntu inputs must identify the official 24.04 image.
+resolving `latest` again. Ubuntu inputs must identify the official image of the
+pinned release.
 
 Local OCI versions use `<qdrant-version>-local`; published images retain
 `<qdrant-version>-custom.<N>`. OCI labels record the source ref and revision,
 official-image digest, and Ubuntu runtime digest in both paths. The image
-version label is set explicitly instead of inheriting Ubuntu's `24.04` label.
+version label is set explicitly instead of inheriting Ubuntu's release label.
 Direct Dockerfile builds require verified source arguments; there is no stale
 Qdrant release fallback. This aligns input selection and provenance, not binary
 reproducibility across different build times. Publication still requires the
@@ -225,13 +233,36 @@ After publication, follow the downstream update procedure above, retaining the
 data volumes. A clean rebuild completes successfully; operators remain
 responsible for deploying the published image.
 
+Every pull request to `master` starts `pull-request.yml`, which runs
+`build-custom.yml` with the current verified build inputs: build, Trivy scan under the
+publication vulnerability policy, and the runtime test of the `linux/amd64` candidate.
+It also validates `renovate.json5` with the Renovate release `renovate.yml` runs. It
+publishes nothing; review its result before merging.
+
+Dependency updates: `renovate.yml` runs Renovate weekly (Monday night, Europe/Rome)
+and on demand as the `ragtime-renovate` GitHub App, whose client ID is the repository
+variable `RENOVATE_APP_CLIENT_ID` and private key the secret
+`RENOVATE_APP_PRIVATE_KEY`. It proposes only what the daily workflow does not take on
+its own:
+
+- in one cumulative pull request: a new Rust release of the `cargo-chef` builder, a
+  new `mold` release (`MOLD_VERSION`), a new Debian release of the source stage, a
+  new Trivy line (`TRIVY_SERIES`), and new versions of the GitHub Actions and of the
+  Renovate release the workflow runs;
+- on the Dependency Dashboard issue, awaiting approval: a new Ubuntu LTS release
+  (`UBUNTU_SERIES` and the Dockerfile default that mirrors it). Approving it opens
+  its own pull request, where the change is built and tested.
+
+Nothing is merged automatically. Run it on demand with
+`gh workflow run renovate.yml --repo carvvf/qdrant-docker`.
+
 ## VS Code tasks
 
 The workspace provides these tasks without requiring locally installed lint or
 scanner binaries:
 
 - `Docker: build local image` compiles `qdrant-custom:local` from the
-  verified official Qdrant release signal on Ubuntu 24.04.
+  verified official Qdrant release signal on the pinned Ubuntu release.
 - `Test: Qdrant runtime` builds the image and runs the Ragtime-compatible
   smoke test.
 - `Trivy: scan CVE` builds the image, runs a pinned Trivy container against

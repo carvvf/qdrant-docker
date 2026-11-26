@@ -3,10 +3,14 @@
 ARG QDRANT_SOURCE_REPOSITORY=https://github.com/qdrant/qdrant.git
 ARG QDRANT_SOURCE_REF
 ARG QDRANT_SOURCE_REVISION
+# Every resolved build passes the Ubuntu reference and release from
+# UBUNTU_SERIES in tools/lib/build_inputs.sh. This default serves direct builds
+# only, as BuildKit requires a valid default for an ARG used in FROM;
+# tests/test_build_inputs.py keeps it equal to UBUNTU_SERIES.
 ARG UBUNTU_BASE_IMAGE=ubuntu:24.04
 
 # hadolint ignore=DL3006
-FROM debian:bookworm-slim AS source
+FROM debian:12-slim AS source
 ARG QDRANT_SOURCE_REPOSITORY
 ARG QDRANT_SOURCE_REF
 ARG QDRANT_SOURCE_REVISION
@@ -92,10 +96,11 @@ ARG QDRANT_UPSTREAM_DIGEST=unknown
 ARG QDRANT_IMAGE_VERSION
 ARG UBUNTU_BASE_IMAGE
 ARG UBUNTU_BASE_DIGEST=unknown
+ARG UBUNTU_SERIES
 ARG SOURCE_REPOSITORY=https://github.com/carvvf/qdrant-docker
 
 LABEL org.opencontainers.image.title="Qdrant custom image"
-LABEL org.opencontainers.image.description="Qdrant rebuilt from verified source on Ubuntu 24.04"
+LABEL org.opencontainers.image.description="Qdrant rebuilt from verified source on Ubuntu ${UBUNTU_SERIES}"
 LABEL org.opencontainers.image.documentation="${SOURCE_REPOSITORY}"
 LABEL org.opencontainers.image.source="${SOURCE_REPOSITORY}"
 LABEL org.opencontainers.image.url="${SOURCE_REPOSITORY}"
@@ -111,7 +116,7 @@ LABEL io.github.carvvf.qdrant-docker.runtime.base.digest="${UBUNTU_BASE_DIGEST}"
 # Forces a fresh apt-get run on every build even when GHA layer caching would
 # otherwise reuse this layer unchanged (same base digest, same Qdrant source
 # revision): apt mirrors publish OS security patches far more often than the
-# ubuntu:24.04 tag digest changes, and this layer is how those patches reach
+# Ubuntu tag digest changes, and this layer is how those patches reach
 # the image.
 ARG CACHEBUST=unknown
 
