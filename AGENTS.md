@@ -4,7 +4,8 @@
 
 This repository builds and publishes a custom, hardened Qdrant container image
 from the upstream Qdrant source release corresponding to
-`qdrant/qdrant:latest`. Its final runtime base is `ubuntu:24.04`, and it is
+`qdrant/qdrant:latest`. Its final runtime base is the Ubuntu LTS release pinned
+as `UBUNTU_SERIES` in `tools/lib/build_inputs.sh`, and it is
 published to GitHub Container Registry (GHCR) for `linux/amd64`.
 
 The primary purpose is to reduce the exposure window when the official Qdrant
@@ -61,7 +62,11 @@ image does not contain `curl` or `openssl`.
 - Resolve the official Qdrant version and manifest digest during CI, then
   resolve and verify the matching upstream source tag and commit. Record all
   immutable identifiers in OCI labels and workflow output.
-- Use `ubuntu:24.04` as the final runtime base and resolve its manifest digest
+- Use the Ubuntu LTS release pinned as `UBUNTU_SERIES` in
+  `tools/lib/build_inputs.sh` as the final runtime base. Derive every
+  reference, check and label from it, keep the Dockerfile default equal to it
+  under test, and treat a move to a new LTS release as an explicit,
+  reviewed change with its own tests. Resolve the runtime-base manifest digest
   during CI. Keep the Dockerfile small, avoid unnecessary runtime packages,
   clean package metadata, and do not embed credentials.
 - A source rebuild can remediate fixable Ubuntu CVEs and upstream Qdrant

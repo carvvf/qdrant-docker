@@ -1,6 +1,13 @@
 #!/usr/bin/env bash
 # Shared resolution of official release signals and immutable build inputs.
 
+# Ubuntu release of the runtime base. Every resolved reference, check and label
+# derives from it; the Dockerfile default for direct builds mirrors it under test.
+# A new LTS release is a reviewed change, with its tests and migration notes: Renovate
+# lists it on the Dependency Dashboard and opens its pull request only once approved.
+# renovate: datasource=docker depName=ubuntu versioning=ubuntu
+UBUNTU_SERIES='24.04'
+
 build_input_error() {
   printf 'Build input error: %s\n' "$1" >&2
   return 1
@@ -100,13 +107,14 @@ resolve_build_inputs() {
   fi
   ubuntu_base_ref="${UBUNTU_BASE_IMAGE:-}"
   if [ -z "${ubuntu_base_ref}" ]; then
-    ubuntu_base_ref="ubuntu:24.04"
+    ubuntu_base_ref="ubuntu:${UBUNTU_SERIES}"
     if [ -n "${requested_digest}" ]; then
       ubuntu_base_ref="ubuntu@${requested_digest}"
     fi
   fi
-  if [[ ! "${ubuntu_base_ref}" =~ ^ubuntu(:24\.04|@sha256:[a-f0-9]{64})$ ]]; then
-    build_input_error "An official Ubuntu 24.04 reference is required: ${ubuntu_base_ref}"
+  local ubuntu_ref_pattern="^ubuntu(:${UBUNTU_SERIES//./\\.}|@sha256:[a-f0-9]{64})$"
+  if [[ ! "${ubuntu_base_ref}" =~ ${ubuntu_ref_pattern} ]]; then
+    build_input_error "An official Ubuntu ${UBUNTU_SERIES} reference is required: ${ubuntu_base_ref}"
     return 1
   fi
   ubuntu_base_digest="$(pull_image_digest "${ubuntu_base_ref}")"
@@ -117,8 +125,8 @@ resolve_build_inputs() {
   ubuntu_base_ref="ubuntu@${ubuntu_base_digest}"
   local ubuntu_version
   ubuntu_version="$(docker image inspect "${ubuntu_base_ref}" --format '{{index .Config.Labels "org.opencontainers.image.version"}}')"
-  if [ "${ubuntu_version}" != '24.04' ]; then
-    build_input_error "Ubuntu 24.04 is required; resolved ${ubuntu_version}."
+  if [ "${ubuntu_version}" != "${UBUNTU_SERIES}" ]; then
+    build_input_error "Ubuntu ${UBUNTU_SERIES} is required; resolved ${ubuntu_version}."
     return 1
   fi
   printf 'Resolved Qdrant %s at %s; Ubuntu %s.\n' "${upstream_version}" "${source_revision}" "${ubuntu_base_digest}" >&2
@@ -132,5 +140,6 @@ write_build_inputs() {
     "source_ref=${source_ref}" \
     "source_revision=${source_revision}" \
     "ubuntu_base_ref=${ubuntu_base_ref}" \
-    "ubuntu_base_digest=${ubuntu_base_digest}"
+    "ubuntu_base_digest=${ubuntu_base_digest}" \
+    "ubuntu_series=${UBUNTU_SERIES}"
 }

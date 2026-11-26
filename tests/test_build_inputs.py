@@ -3,11 +3,19 @@
 import json
 import os
 import subprocess
+import re
+import shutil
 import tempfile
 import unittest
 from pathlib import Path
 
 REPO_ROOT = Path(__file__).resolve().parents[1]
+# The Ubuntu release is read from its source, so the tests follow a change of it.
+UBUNTU_SERIES = re.search(
+    r"^UBUNTU_SERIES='([^']+)'$",
+    (REPO_ROOT / "tools" / "lib" / "build_inputs.sh").read_text(encoding="utf-8"),
+    re.MULTILINE,
+).group(1)
 QDRANT_DIGEST = "sha256:" + "a" * 64
 UBUNTU_DIGEST = "sha256:" + "b" * 64
 SOURCE_COMMIT = "c" * 40
@@ -70,21 +78,21 @@ class BuildInputTests(unittest.TestCase):
         self.calls_path = self.root / "calls.jsonl"
         self.state = {
             "version": "1.19.2",
-            "ubuntu_version": "24.04",
+            "ubuntu_version": UBUNTU_SERIES,
             "qdrant_digest": QDRANT_DIGEST,
             "ubuntu_digest": UBUNTU_DIGEST,
             "commit": SOURCE_COMMIT,
             "annotated": True,
         }
 
-    def invoke(self, entrypoint="resolve_build_inputs.sh", **inputs):
+    def invoke(self, entrypoint="resolve_build_inputs.sh", tools_dir=REPO_ROOT / "tools", **inputs):
         env = {key: value for key, value in os.environ.items() if key not in INPUT_NAMES}
         env.update(inputs)
         env["PATH"] = str(self.bin_dir) + os.pathsep + env["PATH"]
         env["BUILD_INPUT_TEST_STATE"] = json.dumps(self.state)
         env["BUILD_INPUT_TEST_CALLS"] = str(self.calls_path)
         return subprocess.run(
-            ["/bin/bash", str(REPO_ROOT / "tools" / entrypoint)],
+            ["/bin/bash", str(tools_dir / entrypoint)],
             cwd=self.root,
             env=env,
             capture_output=True,
@@ -110,6 +118,7 @@ class BuildInputTests(unittest.TestCase):
                 "source_revision": SOURCE_COMMIT,
                 "ubuntu_base_ref": "ubuntu@" + UBUNTU_DIGEST,
                 "ubuntu_base_digest": UBUNTU_DIGEST,
+                "ubuntu_series": UBUNTU_SERIES,
             },
         )
         self.assertIn(["docker", "pull", "--platform", "linux/amd64", "qdrant/qdrant:latest"], self.calls())
@@ -145,6 +154,7 @@ class BuildInputTests(unittest.TestCase):
             "QDRANT_IMAGE_VERSION=1.19.2-local",
             "UBUNTU_BASE_IMAGE=ubuntu@" + UBUNTU_DIGEST,
             "UBUNTU_BASE_DIGEST=" + UBUNTU_DIGEST,
+            "UBUNTU_SERIES=" + UBUNTU_SERIES,
         ):
             self.assertIn(value, build)
         self.assertIn("--no-cache", build)
@@ -162,17 +172,49 @@ class BuildInputTests(unittest.TestCase):
         for inputs in cases:
             with self.subTest(inputs=inputs):
                 # Tagged references let the stub report its configured digest.
-                inputs = {"QDRANT_UPSTREAM_REF": "qdrant/qdrant:latest", "UBUNTU_BASE_IMAGE": "ubuntu:24.04", **inputs}
+                inputs = {"QDRANT_UPSTREAM_REF": "qdrant/qdrant:latest", "UBUNTU_BASE_IMAGE": "ubuntu:" + UBUNTU_SERIES, **inputs}
                 result = self.invoke("build_local_image.sh", **inputs)
                 self.assertNotEqual(result.returncode, 0)
                 self.assertIn("Build input error:", result.stderr)
         self.assertFalse(any(call[:2] == ["docker", "build"] for call in self.calls()))
 
+    def test_dockerfile_default_mirrors_ubuntu_series(self):
+        # Direct builds use the Dockerfile default; resolved builds use UBUNTU_SERIES.
+        dockerfile = (REPO_ROOT / "Dockerfile").read_text(encoding="utf-8")
+        default = re.search(r"^ARG UBUNTU_BASE_IMAGE=(\S+)$", dockerfile, re.MULTILINE)
+        self.assertIsNotNone(default)
+        self.assertEqual(default.group(1), "ubuntu:" + UBUNTU_SERIES)
+
+    def test_ubuntu_series_governs_the_resolved_release(self):
+        # Moving to another release edits UBUNTU_SERIES: the default reference, the
+        # release check and the build arguments all follow it.
+        tools = self.root / "tools"
+        shutil.copytree(REPO_ROOT / "tools", tools)
+        library = tools / "lib" / "build_inputs.sh"
+        pinned = f"UBUNTU_SERIES='{UBUNTU_SERIES}'"
+        library.write_text(library.read_text(encoding="utf-8").replace(pinned, "UBUNTU_SERIES='26.04'"), encoding="utf-8")
+
+        result = self.invoke("build_local_image.sh", tools_dir=tools)
+        self.assertNotEqual(result.returncode, 0)
+        self.assertIn(f"Ubuntu 26.04 is required; resolved {UBUNTU_SERIES}.", result.stderr)
+        self.assertFalse(any(call[:2] == ["docker", "build"] for call in self.calls()))
+
+        self.state["ubuntu_version"] = "26.04"
+        result = self.invoke("build_local_image.sh", tools_dir=tools)
+        self.assertEqual(result.returncode, 0, result.stderr)
+        self.assertIn(["docker", "pull", "--platform", "linux/amd64", "ubuntu:26.04"], self.calls())
+        build = next(call for call in self.calls() if call[:2] == ["docker", "build"])
+        self.assertIn("UBUNTU_SERIES=26.04", build)
+
+        result = self.invoke(tools_dir=tools)
+        self.assertEqual(result.returncode, 0, result.stderr)
+        self.assertIn("ubuntu_series=26.04", result.stdout.splitlines())
+
     def test_wrong_ubuntu_release_aborts_before_build(self):
         self.state["ubuntu_version"] = "22.04"
         result = self.invoke("build_local_image.sh")
         self.assertNotEqual(result.returncode, 0)
-        self.assertIn("Ubuntu 24.04 is required", result.stderr)
+        self.assertIn(f"Ubuntu {UBUNTU_SERIES} is required", result.stderr)
         self.assertFalse(any(call[:2] == ["docker", "build"] for call in self.calls()))
 
     def test_missing_tag_aborts_before_build(self):

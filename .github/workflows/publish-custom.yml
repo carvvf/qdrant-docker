@@ -25,7 +25,7 @@ on:
         required: false
         default: ''
       ubuntu_base_ref:
-        description: Optional immutable Ubuntu runtime reference; empty resolves ubuntu:24.04
+        description: Optional immutable Ubuntu runtime reference; empty resolves the release pinned as UBUNTU_SERIES in tools/lib/build_inputs.sh
         required: false
         default: ''
       ubuntu_base_digest:
@@ -88,6 +88,7 @@ jobs:
       source_revision: ${{ steps.resolve.outputs.source_revision }}
       ubuntu_base_ref: ${{ steps.resolve.outputs.ubuntu_base_ref }}
       ubuntu_base_digest: ${{ steps.resolve.outputs.ubuntu_base_digest }}
+      ubuntu_series: ${{ steps.resolve.outputs.ubuntu_series }}
 
     steps:
       - name: Checkout repository
@@ -172,6 +173,7 @@ jobs:
             echo "source_revision=${source_revision}"
             echo "ubuntu_base_ref=${ubuntu_base_ref}"
             echo "ubuntu_base_digest=${ubuntu_base_digest}"
+            echo "ubuntu_series=${UBUNTU_SERIES}"
           } >> "${GITHUB_OUTPUT}"
 
           {
@@ -226,7 +228,7 @@ jobs:
             io.github.carvvf.qdrant-docker.qdrant.source.ref=${{ needs.preflight.outputs.source_ref }}
             io.github.carvvf.qdrant-docker.qdrant.source.revision=${{ needs.preflight.outputs.source_revision }}
             io.github.carvvf.qdrant-docker.qdrant.upstream.digest=${{ needs.preflight.outputs.upstream_digest }}
-            io.github.carvvf.qdrant-docker.runtime.base.name=ubuntu:24.04
+            io.github.carvvf.qdrant-docker.runtime.base.name=ubuntu:${{ needs.preflight.outputs.ubuntu_series }}
             io.github.carvvf.qdrant-docker.runtime.base.digest=${{ needs.preflight.outputs.ubuntu_base_digest }}
           build-args: |
             QDRANT_SOURCE_REF=${{ needs.preflight.outputs.source_ref }}
@@ -236,6 +238,7 @@ jobs:
             QDRANT_UPSTREAM_DIGEST=${{ needs.preflight.outputs.upstream_digest }}
             UBUNTU_BASE_IMAGE=${{ needs.preflight.outputs.ubuntu_base_ref }}
             UBUNTU_BASE_DIGEST=${{ needs.preflight.outputs.ubuntu_base_digest }}
+            UBUNTU_SERIES=${{ needs.preflight.outputs.ubuntu_series }}
             SOURCE_REPOSITORY=https://github.com/${{ github.repository }}
             CACHEBUST=${{ github.run_id }}
 
