@@ -10,7 +10,7 @@ ARG QDRANT_SOURCE_REVISION
 ARG UBUNTU_BASE_IMAGE=ubuntu:24.04
 
 # hadolint ignore=DL3006
-FROM debian:12-slim AS source
+FROM debian:13-slim AS source
 ARG QDRANT_SOURCE_REPOSITORY
 ARG QDRANT_SOURCE_REF
 ARG QDRANT_SOURCE_REVISION
@@ -29,7 +29,7 @@ RUN test -n "${QDRANT_SOURCE_REF}" \
     && printf '%s\n' "${actual_revision}" > /qdrant-source-revision
 
 # Keep this toolchain aligned with the upstream Qdrant v1.19 build definition.
-FROM lukemathwalker/cargo-chef:latest-rust-1.98.0-bookworm AS chef
+FROM lukemathwalker/cargo-chef:latest-rust-1.100.0-bookworm AS chef
 WORKDIR /qdrant
 
 FROM chef AS planner
@@ -63,7 +63,7 @@ RUN --mount=type=cache,target=/qdrant/target,id=qdrant-cargo-target,sharing=lock
     --mount=type=cache,target=/usr/local/cargo/registry,id=qdrant-cargo-registry,sharing=locked \
     cargo chef cook --release --features stacktrace --recipe-path recipe.json
 
-ARG MOLD_VERSION=2.41.0
+ARG MOLD_VERSION=3.0.0
 # hadolint ignore=DL4006
 RUN mkdir -p /opt/mold \
     && curl --fail --silent --show-error --location \
