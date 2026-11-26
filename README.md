@@ -236,7 +236,25 @@ responsible for deploying the published image.
 Every pull request to `master` starts `pull-request.yml`, which runs
 `build-custom.yml` with the current verified build inputs: build, Trivy scan under the
 publication vulnerability policy, and the runtime test of the `linux/amd64` candidate.
-It publishes nothing; review its result before merging.
+It also validates `renovate.json5` with the Renovate release `renovate.yml` runs. It
+publishes nothing; review its result before merging.
+
+Dependency updates: `renovate.yml` runs Renovate weekly (Monday night, Europe/Rome)
+and on demand as the `ragtime-renovate` GitHub App, whose client ID is the repository
+variable `RENOVATE_APP_CLIENT_ID` and private key the secret
+`RENOVATE_APP_PRIVATE_KEY`. It proposes only what the daily workflow does not take on
+its own:
+
+- in one cumulative pull request: a new Rust release of the `cargo-chef` builder, a
+  new `mold` release (`MOLD_VERSION`), a new Debian release of the source stage, a
+  new Trivy line (`TRIVY_SERIES`), and new versions of the GitHub Actions and of the
+  Renovate release the workflow runs;
+- on the Dependency Dashboard issue, awaiting approval: a new Ubuntu LTS release
+  (`UBUNTU_SERIES` and the Dockerfile default that mirrors it). Approving it opens
+  its own pull request, where the change is built and tested.
+
+Nothing is merged automatically. Run it on demand with
+`gh workflow run renovate.yml --repo carvvf/qdrant-docker`.
 
 ## VS Code tasks
 
