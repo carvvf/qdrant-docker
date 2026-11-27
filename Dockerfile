@@ -15,8 +15,13 @@ ARG QDRANT_SOURCE_REPOSITORY
 ARG QDRANT_SOURCE_REF
 ARG QDRANT_SOURCE_REVISION
 
+# Package index updates go through build/retry.sh, mounted for the command only: it
+# retries them with growing pauses while a distribution mirror is mid-sync.
+# --error-on=any makes an unreachable source an error, and so a retry, too: apt only
+# warns about it, and the install would then fail on a missing index.
 # hadolint ignore=DL3008
-RUN apt-get update \
+RUN --mount=type=bind,source=build/retry.sh,target=/mnt/retry.sh \
+    sh /mnt/retry.sh apt-get update --error-on=any \
     && apt-get install -y --no-install-recommends ca-certificates git \
     && rm -rf /var/lib/apt/lists/*
 
@@ -42,7 +47,8 @@ WORKDIR /qdrant
 
 # hadolint ignore=DL3008
 RUN --mount=type=cache,target=/usr/local/cargo/registry,id=qdrant-cargo-registry,sharing=locked \
-    apt-get update \
+    --mount=type=bind,source=build/retry.sh,target=/mnt/retry.sh \
+    sh /mnt/retry.sh apt-get update --error-on=any \
     && apt-get install -y --no-install-recommends \
       clang \
       cmake \
@@ -122,7 +128,8 @@ ARG CACHEBUST=unknown
 
 ENV DEBIAN_FRONTEND=noninteractive
 # hadolint ignore=DL3008
-RUN apt-get update \
+RUN --mount=type=bind,source=build/retry.sh,target=/mnt/retry.sh \
+    sh /mnt/retry.sh apt-get update --error-on=any \
     && apt-get upgrade -y \
     && apt-get install -y --no-install-recommends ca-certificates libunwind8 tzdata \
     && rm -rf /var/lib/apt/lists/* /var/cache/apt/archives/*
