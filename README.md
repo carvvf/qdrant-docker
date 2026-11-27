@@ -262,6 +262,10 @@ its own:
   (`UBUNTU_SERIES` and the Dockerfile default that mirrors it). Approving it opens
   its own pull request, where the change is built and tested.
 
+Ticking a box on the Dependency Dashboard issue (an approval, a retry) starts a
+run at once instead of at the weekly one; Renovate's own edits of the issue
+start none.
+
 Nothing is merged automatically. Run it on demand with
 `gh workflow run renovate.yml --repo carvvf/qdrant-docker`.
 
